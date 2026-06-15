@@ -27,24 +27,21 @@ resource "aws_resourcegroups_group" "resourcegroups_group" {
     JSON
   }
 }
-# create vpc and load balancer and resource group
-data "aws_availability_zones" "available" {}
+# use the account's default VPC (and its subnets) instead of creating a new one
+data "aws_vpc" "default" {
+  default = true
+}
 
-module "vpc" {
-  source             = "terraform-aws-modules/vpc/aws"
-  version            = "2.17.0"
-  name               = "${local.namespace}-vpc"
-  cidr               = "10.0.0.0/16"
-  azs                = data.aws_availability_zones.available.names
-  private_subnets    = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets     = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
-  enable_nat_gateway = true
-  single_nat_gateway = true
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
 }
 
 module "lb_sg" {
   source = "terraform-in-action/sg/aws"
-  vpc_id = module.vpc.vpc_id
+  vpc_id = data.aws_vpc.default.id
   ingress_rules = [{
     port        = 80
     cidr_blocks = ["0.0.0.0/0"]
@@ -53,7 +50,7 @@ module "lb_sg" {
 
 module "webserver_sg" {
   source = "terraform-in-action/sg/aws"
-  vpc_id = module.vpc.vpc_id
+  vpc_id = data.aws_vpc.default.id
   ingress_rules = [
     {
       port            = 8080
@@ -68,7 +65,7 @@ module "webserver_sg" {
 
 resource "aws_lb" "lb" {
   name            = "${local.namespace}-lb"
-  subnets         = module.vpc.public_subnets
+  subnets         = data.aws_subnets.default.ids
   security_groups = [module.lb_sg.security_group.id]
   tags = {
     ResourceGroup = local.namespace
@@ -80,7 +77,7 @@ resource "aws_lb_target_group" "blue_target_group" {
   port        = 8080
   protocol    = "HTTP"
   target_type = "instance"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = data.aws_vpc.default.id
   tags = {
     ResourceGroup = local.namespace
   }
@@ -92,7 +89,7 @@ resource "aws_lb_target_group" "green_target_group" {
   port        = 8080
   protocol    = "HTTP"
   target_type = "instance"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = data.aws_vpc.default.id
   tags = {
     ResourceGroup = local.namespace
   }
