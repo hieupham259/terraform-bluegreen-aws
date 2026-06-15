@@ -1,0 +1,48 @@
+# ===== Terraform =====
+
+# Local .terraform directories (provider plugins, downloaded modules)
+**/.terraform/*
+.terraform/
+
+# .tfstate files (chứa state, có thể lộ secret) — không commit
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files — thường chứa dữ liệu nhạy cảm (secrets, credentials)
+*.tfvars
+*.tfvars.json
+
+# Ignore override files — thường dùng cho cấu hình local, không nên commit
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# Ignore transient lock info files created by terraform apply
+.terraform.tfstate.lock.info
+
+# Plan output files
+*.tfplan
+*.plan
+
+# ===== Lock file =====
+# Lock file của dependency: NÊN commit để pin version provider/module trên mọi máy.
+# Bỏ comment dòng dưới nếu muốn loại trừ (không khuyến nghị).
+# .terraform.lock.hcl
+
+# ===== Editor / OS =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
