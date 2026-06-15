@@ -13,8 +13,8 @@ output "namespace" {
 
 output "sg" {
   value = {
-    lb        = module.lb_sg.security_group.id
-    webserver = module.webserver_sg.security_group.id
+    lb        = aws_security_group.lb_sg.id
+    webserver = aws_security_group.webserver_sg.id
   }
 }
 

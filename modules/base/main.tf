@@ -39,34 +39,79 @@ data "aws_subnets" "default" {
   }
 }
 
-module "lb_sg" {
-  source = "terraform-in-action/sg/aws"
+# Security groups are declared WITHOUT inline ingress/egress blocks. Every rule
+# is a separate aws_security_group_rule so the SGs never reference each other
+# directly. This avoids circular dependencies (and AWS DependencyViolation on
+# destroy) and lets each rule be created, updated, or deleted independently.
+resource "aws_security_group" "lb_sg" {
+  name   = "${local.namespace}-lb-sg"
   vpc_id = data.aws_vpc.default.id
-  ingress_rules = [{
-    port        = 80
-    cidr_blocks = ["0.0.0.0/0"]
-  }]
+
+  tags = {
+    ResourceGroup = local.namespace
+  }
 }
 
-module "webserver_sg" {
-  source = "terraform-in-action/sg/aws"
+resource "aws_security_group" "webserver_sg" {
+  name   = "${local.namespace}-webserver-sg"
   vpc_id = data.aws_vpc.default.id
-  ingress_rules = [
-    {
-      port            = 8080
-      security_groups = [module.lb_sg.security_group.id]
-    },
-    {
-      port        = 22
-      cidr_blocks = ["10.0.0.0/16"]
-    }
-  ]
+
+  tags = {
+    ResourceGroup = local.namespace
+  }
+}
+
+# --- lb_sg rules ---
+resource "aws_security_group_rule" "lb_ingress_http" {
+  type              = "ingress"
+  security_group_id = aws_security_group.lb_sg.id
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "lb_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.lb_sg.id
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+# --- webserver_sg rules ---
+resource "aws_security_group_rule" "webserver_ingress_app" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.webserver_sg.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.lb_sg.id
+}
+
+resource "aws_security_group_rule" "webserver_ingress_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.webserver_sg.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = ["10.0.0.0/16"]
+}
+
+resource "aws_security_group_rule" "webserver_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.webserver_sg.id
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 resource "aws_lb" "lb" {
   name            = "${local.namespace}-lb"
   subnets         = data.aws_subnets.default.ids
-  security_groups = [module.lb_sg.security_group.id]
+  security_groups = [aws_security_group.lb_sg.id]
   tags = {
     ResourceGroup = local.namespace
   }
