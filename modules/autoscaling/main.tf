@@ -1,7 +1,56 @@
-#create instance and autoscaling group and lb listeners
-module "iam_instance_profile" {
-  source  = "terraform-in-action/iip/aws"
-  actions = ["logs:*"]
+# create instance and autoscaling group and lb listeners
+# IAM role + instance profile cho webserver
+
+# Trust policy
+data "aws_iam_policy_document" "assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+# Permissions policy
+data "aws_iam_policy_document" "permissions" {
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role" "webserver" {
+  name               = "${var.base.namespace}-${var.label}-role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+
+  tags = {
+    ResourceGroup = var.base.namespace
+  }
+}
+
+resource "aws_iam_policy" "webserver" {
+  name   = "${var.base.namespace}-${var.label}-policy"
+  policy = data.aws_iam_policy_document.permissions.json
+
+  tags = {
+    ResourceGroup = var.base.namespace
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "webserver" {
+  role       = aws_iam_role.webserver.name
+  policy_arn = aws_iam_policy.webserver.arn
+}
+
+resource "aws_iam_instance_profile" "webserver" {
+  name = "${var.base.namespace}-${var.label}-profile"
+  role = aws_iam_role.webserver.name
+
+  tags = {
+    ResourceGroup = var.base.namespace
+  }
 }
 
 data "aws_ami" "ubuntu" {
@@ -26,7 +75,7 @@ resource "aws_launch_template" "webserver" {
   user_data     = base64encode(local.startup)
   key_name      = var.ssh_keypair
   iam_instance_profile {
-    name = module.iam_instance_profile.name
+    name = aws_iam_instance_profile.webserver.name
   }
   vpc_security_group_ids = [var.base.sg.webserver]
   tags = {
