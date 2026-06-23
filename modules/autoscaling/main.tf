@@ -59,7 +59,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
@@ -85,8 +85,8 @@ resource "aws_launch_template" "webserver" {
 
 resource "aws_autoscaling_group" "webserver" {
   name     = "${var.base.namespace}-${var.label}-asg"
-  min_size = 3
-  max_size = 3
+  min_size = 1
+  max_size = 1
   //vpc_zone_identifier = var.base.vpc.private_subnets
   vpc_zone_identifier = var.base.vpc.public_subnets
   target_group_arns   = var.label == "green" ? var.base.target_group_arns.green : var.base.target_group_arns.blue

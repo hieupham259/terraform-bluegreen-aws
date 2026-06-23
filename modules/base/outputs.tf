@@ -1,7 +1,7 @@
 output "vpc" {
   value = {
     vpc_id = data.aws_vpc.default.id
-    # default VPC chỉ có subnet public (1 subnet/AZ); map cả hai key cho tương thích
+    # The default VPC only has public subnets (one per AZ); map both keys for compatibility
     public_subnets  = data.aws_subnets.default.ids
     private_subnets = data.aws_subnets.default.ids
   }
