@@ -1,23 +1,13 @@
-module "base" {
-  source     = "./modules/base"
-  production = var.production
-}
-
-module "green" {
-  source      = "./modules/autoscaling"
-  app_version = "v1.0"
-  label       = "green"
-  base        = module.base
-}
-
-module "blue" {
-  source      = "./modules/autoscaling"
-  app_version = "v2.0"
-  label       = "blue"
-  base        = module.base
-}
-
-output "lb_dns_name" {
-  description = "DNS name of the Application Load Balancer - the application entry point."
-  value       = module.base.lb_dns_name
+resource "local_file" "credentials" { #A
+  filename        = "credentials"
+  file_permission = "0644"
+  content         = <<-EOF
+    [${aws_iam_user.app1.name}]
+    aws_access_key_id = ${aws_iam_access_key.app1.id}
+    aws_secret_access_key = ${aws_iam_access_key.app1.secret}
+    
+    [${aws_iam_user.app2.name}]
+    aws_access_key_id = ${aws_iam_access_key.app2.id}
+    aws_secret_access_key = ${aws_iam_access_key.app2.secret}
+  EOF
 }
