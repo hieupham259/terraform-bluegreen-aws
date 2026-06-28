@@ -44,9 +44,9 @@ state**:
 
 | Tình huống | Kết quả |
 |---|---|
-| Address có ở **cả** config lẫn state | no change (hoặc update nếu thuộc tính khác) |
-| Address có trong **state**, mất trong config | **destroy** |
-| Address có trong **config**, chưa có trong state | **create** |
+| Address có ở cả config lẫn state | no change (hoặc update nếu thuộc tính khác) |
+| Address có trong state, mất trong config | destroy |
+| Address có trong config, chưa có trong state | create |
 
 **Tên file KHÔNG nằm trong address.** Đó là lý do đổi file → không đổi gì.
 
@@ -208,29 +208,123 @@ git checkout feat/chapter10-part2
 
 ### Bước 3 — Thêm phần gọi module vào `main.tf`
 
-Dùng `for_each` để address ra đúng dạng `module.iam["app1"]` như trong sách:
+Dùng `locals` + `for_each` để address ra đúng dạng `module.iam["app1"]` như trong sách:
 
 ```hcl
-module "iam" {
-  for_each = {
-    app1 = [file("${path.module}/policies/app1.json")]
-    app2 = [file("${path.module}/policies/app2.json")]
+locals {
+  policies = {
+    for path in fileset(path.module, "policies/*.json") : basename(path) => file(path)
   }
+  policy_mapping = {
+    "app1" = {
+      policies = [local.policies["app1.json"]],
+    },
+    "app2" = {
+      policies = [local.policies["app2.json"]],
+    },
+  }
+}
 
+module "iam" {
   source   = "./modules/iam"
+  for_each = local.policy_mapping
   name     = each.key
-  policies = each.value
+  policies = each.value.policies
 }
 
 resource "local_file" "credentials" {
-  filename        = "credentials"
-  file_permission = "0644"
-  content         = <<-EOF
-    ${module.iam["app1"].credentials}
-    ${module.iam["app2"].credentials}
-  EOF
+  filename = "credentials"
+  content  = join("\n", [for m in module.iam : m.credentials])
 }
 ```
+
+#### Giải thích đoạn code trên
+
+**1. `locals { policies = { for path in fileset(...) ... } }` — đọc toàn bộ file policy**
+
+`fileset(path.module, "policies/*.json")` trả về **set** các đường dẫn khớp glob,
+ví dụ: `{ "policies/app1.json", "policies/app2.json" }`.
+
+`for path in fileset(...) : basename(path) => file(path)` là **for expression**
+duyệt qua set đó và tạo một **map**:
+
+```
+policies = {
+  "app1.json" = "<nội dung JSON của app1>"
+  "app2.json" = "<nội dung JSON của app2>"
+}
+```
+
+- `basename(path)` lấy tên file, bỏ phần thư mục (`"policies/app1.json"` → `"app1.json"`), dùng làm **key** của map.
+- `file(path)` đọc nội dung file thành chuỗi JSON, dùng làm **value**.
+
+Cách này tổng quát hơn hard-code từng file: thêm `app3.json` vào thư mục
+`policies/` là nó tự được nạp, không cần sửa code.
+
+**2. `locals { policy_mapping = { ... } }` — ánh xạ app → danh sách policy**
+
+```hcl
+policy_mapping = {
+  "app1" = { policies = [local.policies["app1.json"]] }
+  "app2" = { policies = [local.policies["app2.json"]] }
+}
+```
+
+Đây là map **tên app → object chứa list policy**. Bọc trong `[ ... ]` để biến
+chuỗi JSON thành **list 1 phần tử**, vì biến `policies` của module khai báo kiểu
+`list(string)` (xem `modules/iam/variables.tf`). Muốn gắn nhiều policy cho một
+app thì thêm phần tử vào list: `[local.policies["a.json"], local.policies["b.json"]]`.
+
+Tách làm 2 local (`policies` và `policy_mapping`) thay vì gộp 1 giúp mỗi phần
+có một trách nhiệm rõ: một bên đọc file, một bên khai báo mapping.
+
+**3. `module "iam" { for_each = local.policy_mapping }` — gọi module, nhân thành nhiều bản**
+
+Đây chính là block còn thiếu khiến trước đó `plan` báo "no changes": file trong
+`modules/iam/` chỉ có hiệu lực khi có một block `module` trỏ tới nó.
+
+`for_each` nhận map `local.policy_mapping`. Terraform tạo **một instance module
+cho mỗi key**:
+
+| Key trong map | Instance address |
+|---|---|
+| `"app1"` | `module.iam["app1"]` |
+| `"app2"` | `module.iam["app2"]` |
+
+Chính `for_each` (map) tạo ra dạng address có ngoặc vuông `module.iam["app1"]`
+đúng như trong sách. (Nếu dùng `count` thì address sẽ là `module.iam[0]`; nếu
+gọi 2 module riêng `module "app1"` / `module "app2"` thì address là
+`module.app1` — đều **không** khớp sách.)
+
+**4. `name = each.key` và `policies = each.value.policies` — truyền biến vào module**
+
+Trong vòng lặp `for_each`, với mỗi iteration:
+- `each.key` = tên app (`"app1"` hoặc `"app2"`).
+- `each.value` = object `{ policies = [...] }`.
+- `each.value.policies` = list chuỗi JSON policy.
+
+| Biến module | Giá trị truyền vào (app1) | Module dùng để... |
+|---|---|---|
+| `name` (string) | `"app1"` | đặt tên user: `"${var.name}-svc-account"` → `app1-svc-account` |
+| `policies` (list(string)) | `["<nội dung app1.json>"]` | tạo `aws_iam_policy` với `count = length(var.policies)` |
+
+Nhờ `each.key = "app1"`, user vẫn mang đúng tên `app1-svc-account` như part 1.
+
+**5. `resource "local_file" "credentials"` — ghi file credentials**
+
+```hcl
+content = join("\n", [for m in module.iam : m.credentials])
+```
+
+- `module.iam` khi dùng `for_each` là một **map** các instance: `{ "app1" = <object>, "app2" = <object> }`.
+- `[for m in module.iam : m.credentials]` duyệt qua map đó, lấy **output `credentials`** của từng instance, tạo thành list chuỗi.
+- `join("\n", [...])` nối các chuỗi lại bằng ký tự xuống dòng thành nội dung file cuối cùng.
+
+Cách này tổng quát hơn hard-code `module.iam["app1"].credentials` + `module.iam["app2"].credentials`: thêm app mới vào `policy_mapping` là file `credentials` tự có thêm section, không cần sửa `local_file`.
+
+> Tóm lại: `locals` đọc file policy và khai báo mapping; block `module` "bật"
+> module IAM và nhân nó thành N bản qua `for_each`; `local_file` gom output của
+> tất cả bản lại thành file `credentials` mà không cần liệt kê từng app.
 
 ### Bước 4 — Plan và đối chiếu với sách
 

@@ -5,12 +5,12 @@ resource "aws_iam_user" "user" {
 
 resource "aws_iam_policy" "policy" {
   count  = length(var.policies)
-  name        = "${var.name}-policy-${count.index}"
-  policy      = var.policies[count.index]
+  name   = "${var.name}-policy-${count.index}"
+  policy = var.policies[count.index]
 }
 
 resource "aws_iam_user_policy_attachment" "attachment" {
-  count  = length(var.policies)
+  count      = length(var.policies)
   user       = aws_iam_user.user.name
   policy_arn = aws_iam_policy.policy[count.index].arn
 }
