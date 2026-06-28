@@ -367,6 +367,46 @@ xuống.
 
 ---
 
+## So sánh `terraform state mv` và `moved` block
+
+Hai cách giải quyết cùng một bài toán — đổi address trong state mà không phá tài
+nguyên thật. AWS không bị đụng chạm trong cả hai trường hợp.
+
+```
+aws_iam_user.app1  →  module.iam["app1"].aws_iam_user.user
+```
+
+### Bảng so sánh
+
+| | `terraform state mv` | `moved` block |
+|---|---|---|
+| **Nơi lưu** | Chạy lệnh CLI, ghi vào `.tfstate` ngay lập tức | Khai báo trong file `.tf`, thực thi khi `plan`/`apply` |
+| **Lịch sử** | Không lưu lại — chạy xong là mất, không ai biết đã từng mv | Nằm trong Git cùng code — có thể review, rollback, audit |
+| **Chia sẻ team** | Người khác phải tự chạy lại lệnh theo tay | Tự động áp dụng khi ai clone repo và chạy `apply` |
+| **An toàn** | Sửa state ngay lập tức, không có bước preview | `terraform plan` hiển thị rõ migration trước khi apply |
+| **Terraform version** | Có từ rất lâu | Chỉ từ Terraform **1.1+** |
+| **Dọn dẹp** | Không cần làm gì sau | Nên xoá `moved` block sau khi apply thành công |
+
+### Khi nào dùng cái nào
+
+**`terraform state mv`** phù hợp khi:
+- Sửa nhanh trên môi trường cá nhân, không cần chia sẻ.
+- Cần migrate state ngay lập tức mà không muốn commit thêm code.
+- Terraform version cũ hơn 1.1.
+
+**`moved` block** phù hợp khi:
+- Làm việc nhóm — migration tự động cho tất cả mọi người qua Git.
+- Muốn migration được review qua PR như mọi thay đổi code khác.
+- Refactor lớn với nhiều resource — dễ đọc và kiểm tra hơn nhiều lệnh CLI.
+
+### Lý do sách dùng `state mv` thay vì `moved` block
+
+Sách dùng `state mv` để **minh hoạ cơ chế state ở mức thấp** — lệnh này tác động
+trực tiếp vào file state, làm lộ rõ cơ chế hơn. `moved` block trừu tượng hoá việc
+đó đi. Về mặt thực tế cho dự án thật, `moved` block là lựa chọn tốt hơn.
+
+---
+
 ## Tóm tắt một dòng
 
 Terraform quan tâm tới **address**, không quan tâm tới **tên file**. Đổi file →
